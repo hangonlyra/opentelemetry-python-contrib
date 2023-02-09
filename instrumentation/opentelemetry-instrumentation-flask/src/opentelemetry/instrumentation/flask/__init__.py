@@ -237,6 +237,7 @@ API
 from logging import getLogger
 from time import time_ns
 from timeit import default_timer
+from threading import get_ident
 from typing import Collection
 
 import flask
@@ -392,7 +393,7 @@ def _wrapped_before_request(
 
         activation = trace.use_span(span, end_on_exit=True)
         activation.__enter__()  # pylint: disable=E1101
-        flask_request_environ[_ENVIRON_ACTIVATION_KEY] = activation
+        flask_request_environ[_ENVIRON_ACTIVATION_KEY] = (get_ident(), activation)
         flask_request_environ[_ENVIRON_SPAN_KEY] = span
         flask_request_environ[_ENVIRON_TOKEN] = token
 
@@ -431,8 +432,8 @@ def _wrapped_teardown_request(
         if excluded_urls and excluded_urls.url_disabled(flask.request.url):
             return
 
-        activation = flask.request.environ.get(_ENVIRON_ACTIVATION_KEY)
-        if not activation:
+        thread_id, activation = flask.request.environ.get(_ENVIRON_ACTIVATION_KEY)
+        if not activation or thread_id != get_ident():
             # This request didn't start a span, maybe because it was created in
             # a way that doesn't run `before_request`, like when it is created
             # with `app.test_request_context`.
